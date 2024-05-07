@@ -1,0 +1,111 @@
+import nltk
+import re
+import pandas as pd
+import matplotlib.pyplot as plt
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+from nltk.sentiment.vader import SentimentIntensityAnalyzer
+from wordcloud import WordCloud, STOPWORDS
+from nltk.corpus import stopwords
+from nltk.stem import SnowballStemmer
+import string
+import tkinter as tk
+from tkinter import filedialog
+from tkhtmlview import HTMLLabel
+
+nltk.download('stopwords')
+nltk.download('vader_lexicon')
+
+stemmer = SnowballStemmer("english")
+stopword = set(stopwords.words('english'))
+
+def clean(text):
+    text = str(text).lower()
+    text = re.sub('\[.*?\]', '', text)
+    text = re.sub('https?://\S+|www\.\S+', '', text)
+    text = re.sub('<.*?>+', '', text)
+    text = re.sub('[%s]' % re.escape(string.punctuation), '', text)
+    text = re.sub('\n', '', text)
+    text = re.sub('\w*\d\w*', '', text)
+    text = [word for word in text.split(' ') if word not in stopword]
+    text = " ".join(text)
+    text = [stemmer.stem(word) for word in text.split(' ')]
+    text = " ".join(text)
+    return text
+
+def load_data():
+    file_path = filedialog.askopenfilename()
+    if file_path:
+        data = pd.read_csv(file_path)
+        return data
+
+def analyze_data():
+    data = load_data()
+    if data is not None:
+        data["text"] = data["text"].apply(clean)
+
+        text = " ".join(i for i in data.text)
+        stopwords = set(STOPWORDS)
+        wordcloud = WordCloud(stopwords=stopwords, background_color="white").generate(text)
+
+        sentiments = SentimentIntensityAnalyzer()
+        data["Positive"] = [sentiments.polarity_scores(i)["pos"] for i in data["text"]]
+        data["Negative"] = [sentiments.polarity_scores(i)["neg"] for i in data["text"]]
+        data["Neutral"] = [sentiments.polarity_scores(i)["neu"] for i in data["text"]]
+        data = data[["text", "Positive", "Negative", "Neutral"]]
+
+        def sentiment_score(a, b, c):
+            if (a > b) and (a > c):
+                return "Positive", a
+            elif (b > a) and (b > c):
+                return "Negative", b
+            else:
+                return "Neutral", c
+
+        sentiment_label, sentiment_score_value = sentiment_score(sum(data["Positive"]), sum(data["Negative"]), sum(data["Neutral"]))
+        results_html.set_html(f"<h2>Sentiment Analysis Results</h2>"
+                              f"<p><strong>Sentiment:</strong> {sentiment_label}</p>"
+                              f"<p><strong>Positive:</strong> {sum(data['Positive'])}</p>"
+                              f"<p><strong>Negative:</strong> {sum(data['Negative'])}</p>"
+                              f"<p><strong>Neutral:</strong> {sum(data['Neutral'])}</p>"
+                              )
+        # Display Sentiment Analysis Pie Chart
+        fig1, ax1 = plt.subplots(figsize=(6, 4))
+        labels = 'Positive', 'Negative', 'Neutral'
+        sizes = [sum(data["Positive"]), sum(data["Negative"]), sum(data["Neutral"])]
+        colors = ['lightgreen', 'lightcoral', 'lightskyblue']
+        explode = (0.1, 0, 0)  # explode 1st slice
+        ax1.pie(sizes, explode=explode, labels=labels, colors=colors, autopct='%1.1f%%', shadow=True, startangle=140)
+        ax1.set_title('Sentiment Analysis')
+        ax1.axis('equal')
+        ax1.legend()
+        plt.tight_layout()
+
+        # Display Sentiment Analysis Bar Chart
+        fig2, ax2 = plt.subplots(figsize=(6, 4))
+        ax2.bar(labels, sizes, color=colors)
+        ax2.set_title('Sentiment Analysis')
+        ax2.set_ylabel('Frequency')
+
+        # Display Sentiment Analysis Line Chart
+        fig3, ax3 = plt.subplots(figsize=(6, 4))
+        ax3.plot(labels, sizes, marker='o', color='b', linestyle='-')
+        ax3.set_title('Sentiment Analysis')
+        ax3.set_ylabel('Frequency')
+
+        # Show all plots
+        plt.show()
+
+# Tkinter GUI
+root = tk.Tk()
+root.title("Sentiment Analysis")
+
+load_button = tk.Button(root, text="Load Data", command=load_data, bg='lightblue', fg='black')
+load_button.pack(pady=10)
+
+analyze_button = tk.Button(root, text="Analyze Data", command=analyze_data, bg='lightgreen', fg='black')
+analyze_button.pack(pady=10)
+
+results_html = HTMLLabel(root, html="<h2>Sentiment Analysis Results</h2>")
+results_html.pack(pady=10)
+
+root.mainloop()
